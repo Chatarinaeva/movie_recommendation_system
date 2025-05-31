@@ -357,32 +357,12 @@ Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Content-Bas
 
 Collaborative Filtering membuat rekomendasi berdasarkan pola interaksi pengguna terhadap film. Proyek ini menggunakan pendekatan embedding berbasis neural network sederhana.
 
-#### a. Encoding dan Normalisasi
+#### a. Persiapan Input Model
 
-```python
-user_ids = df_ratings['userId'].unique().tolist()
-movie_ids = df_ratings['movieId'].unique().tolist()
+Model menerima input berupa data rating yang telah melalui proses encoding ID pengguna dan film, normalisasi skor rating ke rentang 0–1, serta pembagian data train dan validasi (80:20) sebagaimana dijelaskan pada tahap Data Preparation.
 
-user2user_encoded = {x: i for i, x in enumerate(user_ids)}
-movie2movie_encoded = {x: i for i, x in enumerate(movie_ids)}
 
-df_ratings['user'] = df_ratings['userId'].map(user2user_encoded)
-df_ratings['movie'] = df_ratings['movieId'].map(movie2movie_encoded)
-df_ratings['rating'] = df_ratings['rating'].values.astype(np.float32)
-```
-
-#### b. Split Data
-
-```python
-train_indices = int(0.8 * df_ratings.shape[0])
-X = df_ratings[['user', 'movie']].values
-y = df_ratings['rating'].values
-
-X_train, X_val = X[:train_indices], X[train_indices:]
-y_train, y_val = y[:train_indices], y[train_indices:]
-```
-
-#### c. Model Neural Collaborative Filtering
+#### b. Model Neural Collaborative Filtering
 
 ```python
 class RecommenderNet(tf.keras.Model):
@@ -402,7 +382,7 @@ class RecommenderNet(tf.keras.Model):
         return tf.nn.sigmoid(dot + user_bias + movie_bias)
 ```
 
-#### d. Kompilasi Model
+#### c. Kompilasi Model
 
 ```python
 model = RecommenderNet(num_users, num_movies, 50)
@@ -444,6 +424,16 @@ Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Collaborati
 ![CF Output](assets/cf_output.png)
 
 *Gambar 4. Output Rekomendasi Film Menggunakan Collaborative Filtering*
+
+### Perbandingan Pendekatan
+
+| Pendekatan                    | Kelebihan                                                                      | Kekurangan                                        |
+|------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------|
+| Content-Based Filtering (CBF) | Cocok untuk pengguna baru (cold-start), berbasis metadata film, mudah dijelaskan | Rekomendasi cenderung sempit, tidak personal      |
+| Collaborative Filtering (CF)  | Personalisasi tinggi, menangkap preferensi implisit pengguna                    | Butuh banyak data interaksi, rentan cold-start    |
+
+Tabel ini menjelaskan perbandingan konseptual antar pendekatan, sedangkan hasil kuantitatif dijelaskan lebih lanjut pada bagian *Evaluation*.
+
 
 ---
 
@@ -607,6 +597,21 @@ Kombinasi kedua pendekatan ini memberikan solusi yang saling melengkapi: CBF ber
 
 Dengan demikian, sistem ini mampu memberikan Top-N recommendation yang akurat, relevan, dan adaptif terhadap berbagai kebutuhan pengguna.
 
+### Rekomendasi dan Pengembangan Selanjutnya
+
+1. **Membangun Sistem Hybrid**  
+   Untuk memberikan hasil rekomendasi yang lebih lengkap dan akurat, sistem bisa dikembangkan menjadi hybrid. Gunakan *Content-Based Filtering* (CBF) saat pengguna belum banyak memberikan rating, dan beralih ke *Collaborative Filtering* (CF) ketika pengguna sudah cukup aktif (misalnya setelah memberi 5–10 rating). Kedua skor bisa digabungkan dengan perbandingan bobot tertentu agar hasil rekomendasi tetap relevan sekaligus beragam.
+
+2. **Menambah Fitur dalam CBF**  
+   Agar rekomendasi dari sisi konten semakin akurat, pertimbangkan menambahkan informasi tambahan seperti tahun rilis, sutradara, atau tingkat popularitas film. Teknik TF-IDF juga bisa ditingkatkan dengan menggabungkan beberapa fitur sekaligus, bukan hanya genre. Selain itu, penting juga untuk mengecek apakah film yang direkomendasikan terlalu mirip, agar hasilnya lebih bervariasi dan tidak monoton.
+
+3. **Mengoptimalkan Model CF**  
+   Model *Collaborative Filtering* masih bisa ditingkatkan, misalnya dengan melakukan tuning terhadap ukuran embedding, *learning rate*, dan *batch size*. Penambahan metode seperti regularisasi (*dropout*, L2) akan membantu mengurangi risiko *overfitting*. Teknik *negative sampling* juga bisa diterapkan agar model bisa belajar lebih efisien. Selain itu, eksperimen tambahan seperti menambahkan konteks waktu atau musim juga dapat meningkatkan kualitas rekomendasi.
+
+4. **Evaluasi dan Penerapan Nyata**  
+   Supaya hasil evaluasi lebih akurat, gunakan teknik *cross-validation* saat mengukur performa model. Untuk keperluan implementasi, siapkan antarmuka API atau aplikasi sederhana agar sistem bisa digunakan secara langsung oleh pengguna. Jika sistem sudah berjalan, lakukan *A/B testing* untuk mengukur apakah pengguna merasa puas dengan film yang direkomendasikan.
+
+
 ## **Referensi**
 
 [1] S. Algor and S. Srivastava, “Hybrid Movie Recommendation System using Content-Based and Collaborative Filtering,” in *Proc. 2020 Int. Conf. Electronics and Sustainable Communication Systems (ICESC)*, 2020, pp. 102–106. doi: [10.1109/ICESC48915.2020.9155879](https://doi.org/10.1109/ICESC48915.2020.9155879)
@@ -617,8 +622,4 @@ Dengan demikian, sistem ini mampu memberikan Top-N recommendation yang akurat, r
 
 [4] K. Nand and R. Tripathi, “Movie Recommendation System Based on Hybrid Filtering using K-Means and TF-IDF,” *J. Adv. Inf. Technol.*, vol. 12, no. 3, pp. 189–196, 2021. doi: [10.12720/jait.12.3.189-196](https://doi.org/10.12720/jait.12.3.189-196)
 
-**---Ini adalah bagian akhir laporan---**
 
-_Catatan:_
-- _Anda dapat menambahkan gambar, kode, atau tabel ke dalam laporan jika diperlukan. Temukan caranya pada contoh dokumen markdown di situs editor [Dillinger](https://dillinger.io/), [Github Guides: Mastering markdown](https://guides.github.com/features/mastering-markdown/), atau sumber lain di internet. Semangat!_
-- Jika terdapat penjelasan yang harus menyertakan code snippet, tuliskan dengan sewajarnya. Tidak perlu menuliskan keseluruhan kode project, cukup bagian yang ingin dijelaskan saja.
