@@ -38,28 +38,83 @@ Genre dari setiap film akan diolah menggunakan TF-IDF Vectorizer, kemudian dihit
 Model dibangun dengan pendekatan embedding neural network yang mempelajari hubungan laten antara user dan item. Model kemudian memprediksi skor ketertarikan pengguna terhadap film yang belum mereka tonton, lalu memilih rekomendasi berdasarkan skor tertinggi.
 
 ## Data Understanding
-### **Data Understanding**
 
 Proyek ini menggunakan dataset [*Movie Recommender System*](https://www.kaggle.com/datasets/gargmanas/movierecommenderdataset) dari Kaggle. Dataset ini terdiri dari dua file utama:
 
-- `movies.csv` berisi metadata dari setiap film, seperti `movieId`, `title`, dan `genres`.
-- `ratings.csv` memuat data interaksi pengguna dengan film, mencakup `userId`, `movieId`, `rating`, dan `timestamp`.
+- `movies.csv`: Berisi metadata dari setiap film, seperti `movieId`, `title`, dan `genres`.
+- `ratings.csv`: Memuat data interaksi pengguna dengan film, mencakup `userId`, `movieId`, `rating`, dan `timestamp`.
 
 Dataset dimuat ke Google Colab melalui KaggleHub dan disalin ke Google Drive untuk menjaga ketersediaan data secara stabil.
 
+
+### Struktur dan Kondisi Data
+
+#### A. Dataset `movies.csv`
+
+##### Jumlah Data
+- Jumlah baris: 9.742
+- Jumlah kolom: 3
+
+##### Uraian Fitur
+
+| Fitur     | Tipe Data | Deskripsi                                      |
+|-----------|-----------|------------------------------------------------|
+| movieId   | Integer   | ID unik untuk setiap film                      |
+| title     | Object    | Judul film                                     |
+| genres    | Object    | Genre film, dipisahkan dengan tanda "|"        |
+
+##### Kondisi Data
+- Genre unik: 951 kombinasi
+- Judul duplikat: Ada, seperti Emma (1996), War of the Worlds (2005)
+- Duplikasi baris penuh: Tidak ada (`df.duplicated().sum() = 0`)
+- Missing values: Tidak ada
+
+##### Visualisasi (Top 10 Genre)
+- Genre terbanyak: Drama, Comedy, Action, Thriller, Romance, dll.
+- Genre diekstrak menggunakan `.str.split('|').explode()` sebelum dihitung frekuensinya.
+
+![Gambar visualisasi top 10 genre:](assets/top10_genre.png)
+*Gambar 1. Top 10 Genre Terbanyak di Dataset `movies.csv`*
+
+#### B. Dataset `ratings.csv`
+
+##### Jumlah Data
+- Jumlah baris: 100.836
+- Jumlah kolom: 4
+
+##### Uraian Fitur
+
+| Fitur     | Tipe Data | Deskripsi                                                |
+|-----------|-----------|----------------------------------------------------------|
+| userId    | Integer   | ID unik pengguna                                          |
+| movieId   | Integer   | ID film yang dirating                                     |
+| rating    | Float     | Nilai rating dari pengguna terhadap film (0.5 – 5.0)     |
+| timestamp | Integer   | Waktu rating diberikan (format UNIX timestamp)           |
+
+##### Kondisi Data
+- userId unik: 610
+- movieId yang dirating: 9724
+- Rating unik: 10 level dari 0.5 hingga 5.0
+- Duplikasi baris penuh: Tidak ada
+- Missing values: Tidak ada
+
+##### Visualisasi (Distribusi Rating)
+- Rata-rata rating: 3.5
+- Sebaran rating dominan di rentang 3.0–4.5
+
+![Gambar visualisasi distribusi rating:](assets/rating_distribution.png)
+*Gambar 2. Distribusi Rating Film di Dataset `ratings.csv`*
+
 ---
 
-### **Exploratory Data Analysis (EDA)**
+### Insight Data Understanding
 
-EDA dilakukan untuk memahami struktur dan karakteristik awal dari `df_movies` dan `df_ratings`. Tahapan ini penting agar potensi masalah seperti duplikasi, nilai kosong, atau inkonsistensi bisa diantisipasi sejak awal.
-
-#### 1. Menampilkan Contoh Data Acak
-
-```python
-df_movies.sample(5)
-df_ratings.sample(5)
-```
-
+- **Kebersihan Data**: Dataset tidak mengandung nilai kosong atau baris duplikat.
+- **Dominasi Genre**: Film paling banyak bergenre Drama dan Comedy, mencerminkan preferensi umum pengguna.
+- **Preferensi Rating**: Pengguna cenderung memberi rating positif, mayoritas di atas 3.0.
+- **Relevansi untuk Rekomendasi**: Struktur dan kelengkapan data mendukung pembuatan sistem rekomendasi berbasis konten dan interaksi.
+  
+---
 ## Data Preparation
 
 Proses *data preparation* dilakukan untuk memastikan bahwa data yang digunakan dalam sistem rekomendasi film ini bersih, efisien, dan terstruktur. Tahapan ini dibagi menjadi dua pendekatan utama, yaitu **Content-Based Filtering (CBF)** dan **Collaborative Filtering (CF)**, yang masing-masing membutuhkan preprocessing tersendiri. Dataset juga dibatasi ukurannya agar pelatihan model lebih ringan dan cepat.
