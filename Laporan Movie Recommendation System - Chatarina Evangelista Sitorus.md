@@ -1,4 +1,7 @@
-# Laporan Proyek Machine Learning: Movie Recommendation System Using Content-Based and Collaborative Filtering - Chatarina Evangelista Sitorus
+# Laporan Proyek Machine Learning - Chatarina Evangelista Sitorus
+## *Movie Recommendation System Using Content-Based and Collaborative Filtering*
+
+
 
 ## Project Overview
 
@@ -103,6 +106,7 @@ Dataset dimuat ke Google Colab melalui KaggleHub dan disalin ke Google Drive unt
 - Sebaran rating dominan di rentang 3.0–4.5
 
 ![Gambar visualisasi distribusi rating:](assets/rating_distribution.png)
+
 *Gambar 2. Distribusi Rating Film di Dataset `ratings.csv`*
 
 ---
@@ -262,11 +266,164 @@ Persiapan data yang cermat memainkan peran penting dalam kesuksesan sistem rekom
 ---
 
 ## Modeling
-Tahapan ini membahas mengenai model sisten rekomendasi yang Anda buat untuk menyelesaikan permasalahan. Sajikan top-N recommendation sebagai output.
 
-**Rubrik/Kriteria Tambahan (Opsional)**: 
-- Menyajikan dua solusi rekomendasi dengan algoritma yang berbeda.
-- Menjelaskan kelebihan dan kekurangan dari solusi/pendekatan yang dipilih.
+### 1. Content-Based Filtering (CBF)
+
+Content-Based Filtering merekomendasikan film berdasarkan kemiripan kontennya, khususnya dari informasi genre. Proses ini dimulai dengan membentuk representasi vektor dari genre menggunakan TF-IDF.
+
+#### a. Representasi Genre dengan TF-IDF
+
+```python
+tfidf = TfidfVectorizer()
+tfidf_matrix = tfidf.fit_transform(df_movies_cb['genres'])
+```
+
+#### b. Perhitungan Kemiripan dengan Cosine Similarity
+
+```python
+cosine_sim = cosine_similarity(tfidf_matrix)
+cosine_sim_df = pd.DataFrame(cosine_sim, index=df_movies_cb['title'], columns=df_movies_cb['title'])
+```
+
+#### c. Fungsi Rekomendasi
+
+```python
+def get_cbf_recommendations(title, top_n=10):
+    sim_scores = cosine_sim_df[title].sort_values(ascending=False)
+    top_titles = sim_scores.iloc[1:top_n+1].index
+    return df_movies_cb[df_movies_cb['title'].isin(top_titles)]
+```
+
+#### Hasil Rekomendasi CBF
+
+Rekomendasi diberikan untuk pengguna yang menyukai **Toy Story (1995)** berdasarkan kemiripan genre menggunakan **Content-Based Filtering**.
+
+**Top-5 Rekomendasi Teratas:**
+
+| Rank | Judul Film                               | Genre     |
+|------|-------------------------------------------|-----------|
+| 1    | Thief of Bagdad, The (1940)               | Adventure |
+| 2    | Eight Below (2006)                        | Action    |
+| 3    | Justin and the Knights of Valour (2013)   | Adventure |
+| 4    | Curious George (2006)                     | Adventure |
+| 5    | Seven Years in Tibet (1997)               | Adventure |
+
+**Top-10 Rekomendasi Teratas:**
+
+| Rank | Judul Film                               | Genre     |
+|------|-------------------------------------------|-----------|
+| 1    | Thief of Bagdad, The (1940)               | Adventure |
+| 2    | Eight Below (2006)                        | Action    |
+| 3    | Justin and the Knights of Valour (2013)   | Adventure |
+| 4    | Curious George (2006)                     | Adventure |
+| 5    | Seven Years in Tibet (1997)               | Adventure |
+| 6    | Pink Panther, The (2006)                  | Adventure |
+| 7    | Heavy Metal 2000 (2000)                   | Action    |
+| 8    | Edge, The (1997)                          | Adventure |
+| 9    | Hunt for Red October, The (1990)          | Action    |
+| 10   | The Book of Life (2014)                   | Adventure |
+
+#### Visualisasi Output Content-Based Filtering
+Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Content-Based Filtering:
+
+![CBF Output](assets/cbf_output.png)
+
+*Gambar 3. Rekomendasi Film Menggunakan Content-Based Filtering*
+
+
+### 2. Collaborative Filtering (CF)
+
+Collaborative Filtering membuat rekomendasi berdasarkan pola interaksi pengguna terhadap film. Proyek ini menggunakan pendekatan embedding berbasis neural network sederhana.
+
+#### a. Encoding dan Normalisasi
+
+```python
+user_ids = df_ratings['userId'].unique().tolist()
+movie_ids = df_ratings['movieId'].unique().tolist()
+
+user2user_encoded = {x: i for i, x in enumerate(user_ids)}
+movie2movie_encoded = {x: i for i, x in enumerate(movie_ids)}
+
+df_ratings['user'] = df_ratings['userId'].map(user2user_encoded)
+df_ratings['movie'] = df_ratings['movieId'].map(movie2movie_encoded)
+df_ratings['rating'] = df_ratings['rating'].values.astype(np.float32)
+```
+
+#### b. Split Data
+
+```python
+train_indices = int(0.8 * df_ratings.shape[0])
+X = df_ratings[['user', 'movie']].values
+y = df_ratings['rating'].values
+
+X_train, X_val = X[:train_indices], X[train_indices:]
+y_train, y_val = y[:train_indices], y[train_indices:]
+```
+
+#### c. Model Neural Collaborative Filtering
+
+```python
+class RecommenderNet(tf.keras.Model):
+    def __init__(self, num_users, num_movies, embedding_size):
+        super().__init__()
+        self.user_embedding = layers.Embedding(num_users, embedding_size)
+        self.user_bias = layers.Embedding(num_users, 1)
+        self.movie_embedding = layers.Embedding(num_movies, embedding_size)
+        self.movie_bias = layers.Embedding(num_movies, 1)
+
+    def call(self, inputs):
+        user_vector = self.user_embedding(inputs[:, 0])
+        user_bias = self.user_bias(inputs[:, 0])
+        movie_vector = self.movie_embedding(inputs[:, 1])
+        movie_bias = self.movie_bias(inputs[:, 1])
+        dot = tf.reduce_sum(user_vector * movie_vector, axis=1, keepdims=True)
+        return tf.nn.sigmoid(dot + user_bias + movie_bias)
+```
+
+#### d. Kompilasi Model
+
+```python
+model = RecommenderNet(num_users, num_movies, 50)
+model.compile(loss=tf.keras.losses.MeanSquaredError(), optimizer=keras.optimizers.Adam(0.001))
+```
+
+#### Hasil Rekomendasi CF
+
+Rekomendasi ini diberikan untuk pengguna dengan ID 23 yang dipilih secara acak. Sistem menggunakan pendekatan Collaborative Filtering berbasis deep learning untuk memprediksi film-film yang belum ditonton oleh pengguna, lalu menampilkan film dengan skor prediksi tertinggi.
+
+**Top 5 Film Favorit dari Pengguna 23:**
+
+| Judul Film                                               | Genre                                                   |
+|-----------------------------------------------------------|----------------------------------------------------------|
+| Heat (1995)                                               | Action, Crime, Thriller                                 |
+| Raiders of the Lost Ark (Indiana Jones and the Raiders...)| Action, Adventure                                       |
+| Groundhog Day (1993)                                      | Comedy, Fantasy, Romance                                |
+| Green Mile, The (1999)                                    | Crime, Drama                                            |
+| Laputa: Castle in the Sky (Tenkû no shiro Rapyuta) (1986) | Action, Adventure, Animation, Children, Fantasy, Sci-Fi |
+
+**Top-10 Rekomendasi Film:**
+
+| Rank | Judul Film                                 | Genre                                        |
+|------|--------------------------------------------|---------------------------------------------|
+| 1    | Grand Day Out with Wallace and Gromit, A   | Adventure, Animation, Children, Comedy, Sci-Fi |
+| 2    | Henry V (1989)                              | Action, Drama, Romance, War                 |
+| 3    | Quiet Man, The (1952)                       | Drama, Romance                              |
+| 4    | Stalker (1979)                              | Drama, Mystery, Sci-Fi                      |
+| 5    | Boot, Das (Boat, The) (1981)                | Action, Drama, War                          |
+| 6    | Terminator, The (1984)                      | Action, Sci-Fi, Thriller                    |
+| 7    | Chinatown (1974)                            | Crime, Film-Noir, Mystery, Thriller         |
+| 8    | Duck Soup (1933)                            | Comedy, Musical, War                        |
+| 9    | M (1931)                                     | Crime, Film-Noir, Thriller                  |
+| 10   | Great Escape, The (1963)                    | Action, Adventure, Drama, War               |
+
+#### Visualisasi Output Collaborative Filtering
+Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Collaborative Filtering:
+
+![CF Output](assets/cf_output.png)
+
+*Gambar 4. Output Rekomendasi Film Menggunakan Collaborative Filtering*
+
+---
 
 ## Evaluation
 Pada bagian ini Anda perlu menyebutkan metrik evaluasi yang digunakan. Kemudian, jelaskan hasil proyek berdasarkan metrik evaluasi tersebut.
