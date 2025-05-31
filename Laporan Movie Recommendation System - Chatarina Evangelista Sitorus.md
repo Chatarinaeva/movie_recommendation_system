@@ -426,12 +426,152 @@ Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Collaborati
 ---
 
 ## Evaluation
-Pada bagian ini Anda perlu menyebutkan metrik evaluasi yang digunakan. Kemudian, jelaskan hasil proyek berdasarkan metrik evaluasi tersebut.
 
-Ingatlah, metrik evaluasi yang digunakan harus sesuai dengan konteks data, problem statement, dan solusi yang diinginkan.
+### A. Content-Based Filtering (CBF)
 
-**Rubrik/Kriteria Tambahan (Opsional)**: 
-- Menjelaskan formula metrik dan bagaimana metrik tersebut bekerja.
+Metode CBF dievaluasi menggunakan metrik Precision@K untuk menilai relevansi rekomendasi berdasarkan kemiripan genre dengan film input. Karena tidak melibatkan rating eksplisit, evaluasi berfokus pada kesesuaian genre antar film.
+
+#### Metrik Evaluasi: Precision@K
+
+Precision@K mengukur proporsi item relevan dalam K rekomendasi teratas.
+
+$$
+\text{Precision@K} = \frac{\text{Jumlah item relevan dalam top-K}}{\text{K}}
+$$
+
+Precision@K merupakan metrik yang tepat untuk sistem rekomendasi berbasis konten karena fokus pada kualitas item yang direkomendasikan secara langsung.
+
+#### Fungsi Evaluasi (Precision@K)
+
+```python
+def cbf_precision_score(title, k=10):
+    if title not in cbf_features['title'].values:
+        return f"Judul '{title}' tidak ditemukan dalam metadata."
+
+    input_genres = cbf_features[cbf_features['title'] == title]['genres'].unique().tolist()
+    if not input_genres:
+        return "Tidak ada genre untuk film ini."
+
+    recommended = cbf_recommend_movies(title, k=k)
+    if isinstance(recommended, str):
+        return recommended
+
+    relevant_count = sum(1 for genre in recommended['genres'] if genre in input_genres)
+    precision = relevant_count / k
+
+    return precision, relevant_count
+```
+
+#### Hasil Evaluasi
+
+Evaluasi dilakukan pada film "Toy Story (1995)":
+
+```python
+cbf_precision_score("Toy Story (1995)", k=5)
+# Output: (0.8, 4)
+
+cbf_precision_score("Toy Story (1995)", k=10)
+# Output: (0.7, 7)
+```
+
+| Metric         | K=5  | K=10 |
+| -------------- | ---- | ---- |
+| Precision@K    | 0.80 | 0.70 |
+| Relevant Items | 4/5  | 7/10 |
+
+#### Analisis CBF
+
+* **Precision@5 = 0.80** menunjukkan bahwa 4 dari 5 film yang direkomendasikan memiliki genre yang sama.
+* **Precision@10 = 0.70** menunjukkan bahwa 7 dari 10 film yang direkomendasikan sesuai genre.
+* Sistem cukup akurat, terutama untuk rekomendasi jumlah kecil.
+
+---
+
+### B. Collaborative Filtering (CF)
+
+Metode CF dievaluasi menggunakan metrik RMSE (Root Mean Squared Error) pada data training dan validasi. RMSE mengukur jarak antara rating aktual dan prediksi model.
+
+#### Metrik Evaluasi: RMSE
+
+Root Mean Squared Error (RMSE) adalah metrik evaluasi utama untuk model prediksi rating. RMSE mengukur seberapa jauh nilai prediksi dari nilai sebenarnya.
+
+$$
+RMSE = \sqrt{ \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 }
+$$
+
+Keterangan:
+* $y_i$: nilai rating sebenarnya yang diberikan oleh pengguna (ternormalisasi)
+* $\hat{y}_i$: nilai rating yang diprediksi oleh model
+* $n$: total jumlah data yang dievaluasi
+
+RMSE sesuai digunakan untuk sistem rekomendasi berbasis prediksi karena memberikan gambaran seberapa dekat prediksi model terhadap rating aktual.
+
+#### Callback EarlyStopping
+
+Model dilengkapi dengan callback **EarlyStopping** untuk menghentikan pelatihan secara otomatis apabila tidak ada perbaikan pada metrik RMSE validasi dalam sejumlah epoch berturut-turut. Ini mencegah overfitting dan menghemat waktu komputasi.
+
+```python
+# Callback EarlyStopping
+earlystop = tf.keras.callbacks.EarlyStopping(
+    monitor='val_root_mean_squared_error',
+    patience=10,
+    restore_best_weights=True
+)
+```
+
+#### Hasil Evaluasi
+
+```python
+final_val_rmse = history_cf.history['val_root_mean_squared_error'][-1]
+final_train_rmse = history_cf.history['root_mean_squared_error'][-1]
+final_val_loss = history_cf.history['val_loss'][-1]
+```
+
+| Metrik          | Nilai  | Keterangan                 |
+| --------------- | ------ | -------------------------- |
+| Validation RMSE | 0.2323 | Sudah rendah dan stabil    |
+| Training RMSE   | 0.1516 | Model terlatih dengan baik |
+| Validation Loss | 0.6438 | Tidak overfitting          |
+| Epoch Berakhir  | 31/100 | EarlyStopping aktif        |
+
+#### Visualisasi Evaluasi
+* RMSE Plot
+  
+![RMSE_Plot](assets/rmse_plot.png)
+
+*Gambar 5. RMSE validasi selama pelatihan model Collaborative Filtering*
+
+Grafik RMSE menunjukkan bahwa nilai RMSE training terus menurun, sedangkan RMSE validasi cenderung stabil setelah beberapa epoch awal. Ini mengindikasikan bahwa model mampu belajar dengan baik tanpa overfitting yang signifikan.
+
+
+
+
+* Loss Plot
+
+![Loss_Plot](assets/loss_plot.png)
+
+*Gambar 6. Loss training dan validasi selama pelatihan model Collaborative Filtering*
+
+Grafik Loss menunjukkan pola serupa, di mana loss pada data training menurun stabil dan loss validasi tetap konsisten. Hal ini mendukung kesimpulan bahwa model memiliki generalisasi yang cukup baik terhadap data baru.
+
+
+
+#### Analisis CF
+
+* Model berhenti di epoch ke-31 karena **EarlyStopping**.
+* Performa model **baik** dengan RMSE validasi yang rendah dan selisih RMSE training yang masih wajar.
+* Generalisasi model dinilai cukup bagus.
+
+---
+
+### Perbandingan Performa Model
+
+| Model | Kelebihan                                         | Kekurangan                             | Nilai Evaluasi |
+| ----- | ------------------------------------------------- | -------------------------------------- | -------------- |
+| CBF   | Akurat pada genre yang sama (Precision@5 = 0.80) | Terbatas pada konten, kurang personal  | 8.0 / 10       |
+| CF    | Personalisasi tinggi, RMSE validasi rendah (0.23) | Perlu data historis, rentan cold-start | 8.5 / 10       |
+
+CF memiliki keunggulan dari sisi personalisasi dan performa evaluasi kuantitatif. Sementara itu, CBF lebih unggul dalam konteks cold-start dan interpretabilitas berbasis konten.
 
 ## **Kesimpulan**
 
