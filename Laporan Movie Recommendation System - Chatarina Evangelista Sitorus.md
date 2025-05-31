@@ -69,8 +69,18 @@ Dataset dimuat ke Google Colab melalui KaggleHub dan disalin ke Google Drive unt
 ##### Kondisi Data
 - Genre unik: 951 kombinasi
 - Judul duplikat: Ada, seperti Emma (1996), War of the Worlds (2005)
-- Duplikasi baris penuh: Tidak ada (`df.duplicated().sum() = 0`)
-- Missing values: Tidak ada
+- Duplikasi baris penuh: Tidak ada (`df_movies.duplicated().sum() = 0`)
+- Missing values: Tidak ditemukan, seluruh kolom memiliki jumlah nilai null = 0 (df_movies.isnull().sum())
+  ```python
+  print("Jumlah nilai null di setiap kolom:")
+  print(df_movies.isnull().sum())
+   # Output:
+   #  Jumlah nilai null di setiap kolom:
+   #  movieId    0
+   #  title      0
+   #  genres     0
+   #  dtype: int64
+  ```
 
 ##### Visualisasi (Top 10 Genre)
 - Genre terbanyak: Drama, Comedy, Action, Thriller, Romance, dll.
@@ -97,9 +107,20 @@ Dataset dimuat ke Google Colab melalui KaggleHub dan disalin ke Google Drive unt
 ##### Kondisi Data
 - userId unik: 610
 - movieId yang dirating: 9724
-- Rating unik: 10 level dari 0.5 hingga 5.0
-- Duplikasi baris penuh: Tidak ada
-- Missing values: Tidak ada
+- Rating unik: 10 level dari 0.5 hingga 5.0 [0.5 1.  1.5 2.  2.5 3.  3.5 4.  4.5 5. ]
+- Duplikasi baris penuh: Tidak ada (`df_ratings.duplicated().sum() = 0`)
+- Missing values: Tidak ditemukan, seluruh kolom memiliki jumlah nilai null = 0 (df_ratings.isnull().sum())
+  ```python
+  print("Jumlah nilai null di setiap kolom:")
+  print(df_ratings.isnull().sum())
+   # Output:
+   #  Jumlah nilai null di setiap kolom:
+   #  userId       0
+   #  movieId      0
+   #  rating       0
+   #  timestamp    0
+   #  dtype: int64
+  ```
 
 ##### Visualisasi (Distribusi Rating)
 - Rata-rata rating: 3.5
@@ -117,6 +138,7 @@ Dataset dimuat ke Google Colab melalui KaggleHub dan disalin ke Google Drive unt
 - **Dominasi Genre**: Film paling banyak bergenre Drama dan Comedy, mencerminkan preferensi umum pengguna.
 - **Preferensi Rating**: Pengguna cenderung memberi rating positif, mayoritas di atas 3.0.
 - **Relevansi untuk Rekomendasi**: Struktur dan kelengkapan data mendukung pembuatan sistem rekomendasi berbasis konten dan interaksi.
+- Meskipun terdapat judul film yang sama pada kolom title, hal ini tidak memengaruhi proses pemodelan karena movieId tetap unik dan digunakan sebagai identifier utama. Duplikasi title dibiarkan karena setiap baris memiliki kombinasi genre atau ID yang berbeda.
   
 ---
 ## Data Preparation
