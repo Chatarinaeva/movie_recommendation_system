@@ -189,6 +189,19 @@ Kolom `genres` yang semula berupa string dipisahkan per genre menggunakan `explo
 **Alasan mengapa diperlukan:**  
 Dengan memecah genre menjadi baris individual, kita dapat menghitung kemiripan antar film berdasarkan genre dengan lebih akurat. Representasi genre per baris memungkinkan penerapan teknik representasi teks seperti TF-IDF, sehingga sistem dapat mengenali kemiripan film berdasarkan kemunculan genre yang sama. Ini krusial untuk pendekatan Content-Based Filtering agar fitur konten film bisa dimanfaatkan secara maksimal.
 
+#### c. Ekstraksi Fitur Genre dengan TF-IDF
+
+**Kode Program:**
+```python
+tfidf = TfidfVectorizer()
+tfidf_matrix = tfidf.fit_transform(df_movies_cb['genres'])
+```
+
+**Proses yang dilakukan:**  
+Mengubah genre film yang sudah di-*explode* menjadi representasi vektor menggunakan teknik TF-IDF (*Term Frequency–Inverse Document Frequency*).
+
+**Alasan mengapa diperlukan:**  
+Teknik ini memungkinkan sistem untuk mengenali seberapa penting suatu genre dalam konteks seluruh koleksi film. TF-IDF menyeimbangkan antara frekuensi genre dalam sebuah film dengan seberapa umum genre tersebut muncul di seluruh dataset. Hasil transformasi ini menjadi input utama untuk menghitung kemiripan antar film menggunakan *cosine similarity*, sehingga sistem dapat memberikan rekomendasi yang lebih relevan secara konten.
 
 ### 3. Preprocessing Collaborative Filtering (CF)
 
@@ -268,14 +281,17 @@ Pengacakan data mencegah model belajar dari urutan data yang mungkin memiliki po
 
 #### Ringkasan Tahapan Data Preparation
 
-| No | Tahapan                        | Deskripsi Singkat                                                                 | Alasan Utama                                                                 |
-|----|--------------------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| 1  | Pembatasan Dataset             | Mengambil sebagian kecil data film dan rating                                    | Efisiensi pelatihan                                                          |
-| 2  | Salin Data (CBF & CF)          | Menyalin data dari subset utama                                                  | Isolasi proses dan keamanan data                                             |
-| 3  | Genre Explode (CBF)            | Memecah kolom genre menjadi satu genre per baris                                 | Analisis genre secara individual untuk TF-IDF                               |
-| 4  | Encoding userId dan movieId (CF)    | Konversi ID pengguna dan film ke indeks numerik                                  | Kompatibilitas dengan model                                                  |
-| 5  | Normalisasi Rating  (CF)           | Ubah rating ke skala 0–1                                                         | Skala seragam untuk pelatihan stabil                                         |
-| 6  | Shuffle & Split Train-Validation (CF) | Mengacak data dan membagi 80% train, 20% validasi                             | Evaluasi model yang objektif                                                 |
+### Ringkasan Tahapan Data Preparation
+
+| No | Tahapan                             | Deskripsi Singkat                                                              | Alasan Utama                                                               |
+|----|-------------------------------------|--------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| 1  | Pembatasan Dataset                  | Mengambil sebagian kecil data film dan rating                                 | Efisiensi pelatihan                                                        |
+| 2  | Salin Data (CBF & CF)               | Menyalin data dari subset utama                                               | Isolasi proses dan keamanan data                                           |
+| 3  | Genre Explode (CBF)                 | Memecah kolom genre menjadi satu genre per baris                              | Analisis genre secara individual                                           |
+| 4  | Ekstraksi TF-IDF (CBF)              | Mengubah genre menjadi representasi vektor menggunakan TF-IDF                 | Representasi fitur konten untuk menghitung kemiripan film                 |
+| 5  | Encoding userId dan movieId (CF)    | Konversi ID pengguna dan film ke indeks numerik                               | Kompatibilitas dengan model                                                |
+| 6  | Normalisasi Rating (CF)             | Ubah rating ke skala 0–1                                                      | Skala seragam untuk pelatihan stabil                                       |
+| 7  | Shuffle & Split Train-Validation (CF) | Mengacak data dan membagi 80% train, 20% validasi                            | Evaluasi model yang objektif                                               |
 
 
 #### Insight Data Preparation
@@ -291,23 +307,16 @@ Persiapan data yang cermat memainkan peran penting dalam kesuksesan sistem rekom
 
 ### 1. Content-Based Filtering (CBF)
 
-Content-Based Filtering merekomendasikan film berdasarkan kemiripan kontennya, khususnya dari informasi genre. Proses ini dimulai dengan membentuk representasi vektor dari genre menggunakan TF-IDF.
+Content-Based Filtering merekomendasikan film berdasarkan kemiripan kontennya, khususnya dari informasi genre. Setelah fitur genre direpresentasikan dalam bentuk vektor menggunakan TF-IDF pada tahap sebelumnya, perhitungan kemiripan antar film dilakukan menggunakan *cosine similarity*.
 
-#### a. Representasi Genre dengan TF-IDF
-
-```python
-tfidf = TfidfVectorizer()
-tfidf_matrix = tfidf.fit_transform(df_movies_cb['genres'])
-```
-
-#### b. Perhitungan Kemiripan dengan Cosine Similarity
+#### a. Perhitungan Kemiripan dengan Cosine Similarity
 
 ```python
 cosine_sim = cosine_similarity(tfidf_matrix)
 cosine_sim_df = pd.DataFrame(cosine_sim, index=df_movies_cb['title'], columns=df_movies_cb['title'])
 ```
 
-#### c. Fungsi Rekomendasi
+#### b. Fungsi Rekomendasi
 
 ```python
 def get_cbf_recommendations(title, top_n=10):
