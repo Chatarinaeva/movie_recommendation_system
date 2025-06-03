@@ -343,7 +343,7 @@ def cbf_recommend_movies(title, similarity_data=similarity_df, metadata=cbf_feat
 
 #### Hasil Rekomendasi CBF (Top-N Recommendation CBF)
 
-Pada tahap ini, sistem memberikan rekomendasi film berdasarkan kemiripan genre dengan satu film acuan yang dipilih pengguna. Untuk contoh ini, film yang digunakan sebagai input adalah:
+Pada tahap ini, sistem memberikan rekomendasi film berdasarkan kemiripan genre dengan satu film acuan yang dipilih pengguna. Sistem mencari film-film lain yang memiliki skor cosine similarity tertinggi terhadap film tersebut, lalu menampilkan top-N rekomendasi. Pendekatan ini tidak bergantung pada data rating pengguna, sehingga cocok untuk cold-start user. Untuk contoh ini, film yang digunakan sebagai input adalah:
 
 ```python
 title_of_movie = "Toy Story (1995)"
@@ -357,7 +357,7 @@ cbf_features[cbf_features['title'] == title_of_movie]
 
 Berdasarkan output dari kode di atas, diketahui bahwa Toy Story (1995) termasuk dalam beberapa genre seperti `Adventure`, `Animation`, `Children`, `Comedy`, dan `Fantasy`.
 
-Setelah genre diketahui, sistem akan mencari film lain yang memiliki skor kemiripan tertinggi terhadap film tersebut menggunakan fungsi cbf_recommend_movies(...), yang menghitung cosine similarity antar vektor TF-IDF genre. Berikut adalah kode pemanggilan fungsi rekomendasi untuk mencari Top-N Recommendation.
+Setelah genre diketahui, sistem akan mencari film lain yang memiliki skor kemiripan tertinggi terhadap film tersebut menggunakan fungsi `cbf_recommend_movies(...)`, yang menghitung cosine similarity antar vektor TF-IDF genre. Berikut adalah kode pemanggilan fungsi rekomendasi untuk mencari Top-N Recommendation:
 
 
 ```python
@@ -412,38 +412,164 @@ Collaborative Filtering membuat rekomendasi berdasarkan pola interaksi pengguna 
 Model menerima input berupa data rating yang telah melalui proses encoding ID pengguna dan film, normalisasi skor rating ke rentang 0–1, serta pembagian data train dan validasi (80:20) sebagaimana dijelaskan pada tahap Data Preparation.
 
 
-#### b. Model Neural Collaborative Filtering
+#### b. Membangun Arsitektur Model: RecommenderNet
 
 ```python
 class RecommenderNet(tf.keras.Model):
-    def __init__(self, num_users, num_movies, embedding_size):
-        super().__init__()
-        self.user_embedding = layers.Embedding(num_users, embedding_size)
-        self.user_bias = layers.Embedding(num_users, 1)
-        self.movie_embedding = layers.Embedding(num_movies, embedding_size)
-        self.movie_bias = layers.Embedding(num_movies, 1)
+    def __init__(self, num_users, num_movies, embedding_size, **kwargs):
+        super(RecommenderNet, self).__init__(**kwargs)
+        self.user_embedding = layers.Embedding(
+            input_dim=num_users,
+            output_dim=embedding_size,
+            embeddings_initializer="he_normal",
+            embeddings_regularizer=keras.regularizers.l2(1e-6)
+        )
+        self.user_bias = layers.Embedding(input_dim=num_users, output_dim=1)
+
+        self.movie_embedding = layers.Embedding(
+            input_dim=num_movies,
+            output_dim=embedding_size,
+            embeddings_initializer="he_normal",
+            embeddings_regularizer=keras.regularizers.l2(1e-6)
+        )
+        self.movie_bias = layers.Embedding(input_dim=num_movies, output_dim=1)
+        self.dropout = layers.Dropout(0.3)
 
     def call(self, inputs):
-        user_vector = self.user_embedding(inputs[:, 0])
+        user_vec = self.user_embedding(inputs[:, 0])
         user_bias = self.user_bias(inputs[:, 0])
-        movie_vector = self.movie_embedding(inputs[:, 1])
+        movie_vec = self.movie_embedding(inputs[:, 1])
         movie_bias = self.movie_bias(inputs[:, 1])
-        dot = tf.reduce_sum(user_vector * movie_vector, axis=1, keepdims=True)
-        return tf.nn.sigmoid(dot + user_bias + movie_bias)
+
+        dot_user_movie = tf.tensordot(user_vec, movie_vec, 2)
+        x = dot_user_movie + user_bias + movie_bias
+        return tf.nn.sigmoid(x)
 ```
 
-#### c. Kompilasi Model
+#### c. Kompilasi dan Training Model
+
+Model dikompilasi menggunakan fungsi loss `BinaryCrossentropy` karena target berupa nilai rating yang telah dinormalisasi ke rentang 0–1, mirip dengan probabilitas. Optimizer yang digunakan adalah `Adam` dengan learning rate 0.001. Evaluasi dilakukan dengan metrik `RootMeanSquaredError` untuk mengukur seberapa jauh prediksi terhadap nilai aktual.
+
 
 ```python
-model = RecommenderNet(num_users, num_movies, 50)
-model.compile(loss=tf.keras.losses.MeanSquaredError(), optimizer=keras.optimizers.Adam(0.001))
+model_cf = RecommenderNet(num_users, num_movies, embedding_size=32)
+model_cf.compile(
+    loss=tf.keras.losses.BinaryCrossentropy(),
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+    metrics=[tf.keras.metrics.RootMeanSquaredError()]
+)
 ```
 
-#### Hasil Rekomendasi CF
+Untuk mencegah *overfitting* dan menghentikan pelatihan secara otomatis saat tidak ada peningkatan performa, digunakan callback `EarlyStopping`. Model akan berhenti jika metrik `val_root_mean_squared_error` tidak membaik dalam 10 epoch berturut-turut, dan bobot terbaik akan dikembalikan.
 
-Rekomendasi ini diberikan untuk pengguna dengan ID 23 yang dipilih secara acak. Sistem menggunakan pendekatan Collaborative Filtering berbasis deep learning untuk memprediksi film-film yang belum ditonton oleh pengguna, lalu menampilkan film dengan skor prediksi tertinggi.
+```python
+earlystop = tf.keras.callbacks.EarlyStopping(
+    monitor='val_root_mean_squared_error',
+    patience=10,
+    restore_best_weights=True
+)
+```
 
-**Top 5 Film Favorit dari Pengguna 23:**
+Proses pelatihan (*training*) dilakukan selama maksimal 100 epoch dengan batch size 8. Data dibagi 80:20 antara train dan validation. Callback earlystop digunakan untuk menghentikan pelatihan lebih awal bila diperlukan.
+
+```python
+history_cf = model_cf.fit(
+    x_train_cf, y_train_cf,
+    epochs=100,
+    validation_data=(x_val_cf, y_val_cf),
+    batch_size=8,
+    callbacks=[earlystop]
+)
+```
+
+
+#### Hasil Rekomendasi CF (Top-N Recommendation CF)
+
+Tahapan ini menampilkan hasil rekomendasi dari model *Collaborative Filtering* yang telah dilatih. Dalam proses ini, sistem memilih satu pengguna secara acak, lalu memprediksi skor ketertarikan pengguna terhadap film-film yang belum ditonton menggunakan model *embedding*-based. Film dengan skor prediksi tertinggi akan direkomendasikan. Pendekatan ini menghasilkan rekomendasi yang dipersonalisasi berdasarkan pola rating pengguna lain yang memiliki preferensi serupa.
+
+- Menyiapkan Data Pengguna dan Film Kandidat Rekomendasi: Langkah pertama adalah memilih pengguna secara acak dan memisahkan film yang telah dan belum ditonton olehnya.
+
+```python
+# Dataset untuk testing sistem rekomendasi
+movies_data = df_movies_cf
+user_ratings = df_ratings_cf
+```
+
+```python
+# Memilih satu user secara acak
+random_user = user_ratings.user.sample(1).iloc[0]
+
+# Film yang sudah diberi rating oleh user tersebut
+rated_movies = user_ratings[user_ratings.user == random_user]
+
+# Film yang belum ditonton (belum dirating)
+candidate_movies = movies_data[~movies_data['movieId'].isin(rated_movies.movie.values)]['movieId']
+candidate_movies = list(
+    set(candidate_movies).intersection(set(movie_to_index.keys()))
+)
+```
+
+Menyiapkan input untuk prediksi dengan encoding ID pengguna dan ID film kandidat ke dalam format input [user_id, movie_id]:
+
+```python
+# Encoding untuk user dan daftar film kandidat
+encoded_candidates = [[movie_to_index.get(mid)] for mid in candidate_movies]
+encoded_user = user_to_index.get(random_user)
+
+# Array input (user_id, movie_id) untuk prediksi
+prediction_input = np.hstack(
+    ([[encoded_user]] * len(encoded_candidates), encoded_candidates)
+).astype(np.int32)
+
+```
+
+- Prediksi Skor dan Pilih Top-10 Film: Model digunakan untuk memprediksi ketertarikan pengguna terhadap semua kandidat film, lalu dipilih 10 film dengan skor prediksi tertinggi.
+
+```python
+# Prediksi rating oleh model CF
+predicted_scores = model_cf.predict(prediction_input).flatten()
+
+# Top-10 film dengan skor prediksi tertinggi
+top_movie_indices = predicted_scores.argsort()[-10:][::-1]
+
+# Konversi kembali ke movie ID asli
+top_movie_ids = [
+    index_to_movie.get(encoded_candidates[i][0]) for i in top_movie_indices
+]
+```
+
+- Menampilkan Rekomendasi & Riwayat User
+
+```python
+print(f"Top-N Recomendation for user: {random_user}")
+print("=" * 50)
+
+top_rated = (
+    rated_movies.sort_values(by="rating", ascending=False)
+    .head(5)
+    .movieId.values
+)
+
+if len(top_rated) == 0:
+    print("This user hasn't rated any movies yet.")
+else:
+    print(f"Top {len(top_rated)} favorite movie pick(s) from the user:")
+    print("-" * 50)
+    top_rated_titles = movies_data[movies_data.movieId.isin(top_rated)]
+    for row in top_rated_titles.itertuples():
+        print(f"{row.title} : {row.genres}")
+
+print("-" * 50)
+print("Top 10 Movie Recommendation:")
+print("-" * 50)
+
+recommendations = movies_data[movies_data.movieId.isin(top_movie_ids)]
+for row in recommendations.itertuples():
+    print(f"{row.title} : {row.genres}")
+```
+Dalam eksperimen ini, sistem memilih satu pengguna secara acak dari dataset—yaitu **user ID 23**
+
+**Top 5 Film Favorit dari Pengguna (User 23):**
 
 | Judul Film                                               | Genre                                                   |
 |-----------------------------------------------------------|----------------------------------------------------------|
@@ -467,6 +593,13 @@ Rekomendasi ini diberikan untuk pengguna dengan ID 23 yang dipilih secara acak. 
 | 8    | Duck Soup (1933)                            | Comedy, Musical, War                        |
 | 9    | M (1931)                                     | Crime, Film-Noir, Thriller                  |
 | 10   | Great Escape, The (1963)                    | Action, Adventure, Drama, War               |
+
+
+Insight Rekomendasi untuk User 23:
+
+User 23 tampaknya menyukai film bertema `Action`, `Drama`, dan `Crime`, dengan sentuhan `Thriller`, `Fantasy`, dan `Sci-Fi`. Rekomendasi seperti *The Terminator*, *Das Boot*, dan *The Great Escape* cocok dengan preferensinya yang penuh ketegangan dan petualangan. Sementara itu, *Chinatown* dan *M* menawarkan nuansa `crime-thriller` klasik, dan *Duck Soup* serta *The Quiet Man* memberi sentuhan ringan lewat komedi dan drama romantis yang tetap pas.
+
+
 
 #### Visualisasi Output Collaborative Filtering
 Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Collaborative Filtering:
@@ -510,14 +643,17 @@ def cbf_precision_score(title, k=10):
     if title not in cbf_features['title'].values:
         return f"Judul '{title}' tidak ditemukan dalam metadata."
 
+    # Ambil genre unik dari title yang diminta
     input_genres = cbf_features[cbf_features['title'] == title]['genres'].unique().tolist()
     if not input_genres:
         return "Tidak ada genre untuk film ini."
 
+    # Ambil rekomendasi
     recommended = cbf_recommend_movies(title, k=k)
     if isinstance(recommended, str):
         return recommended
 
+    # Hitung berapa baris rekomendasi yang punya genre sama dengan genre input
     relevant_count = sum(1 for genre in recommended['genres'] if genre in input_genres)
     precision = relevant_count / k
 
@@ -526,7 +662,7 @@ def cbf_precision_score(title, k=10):
 
 #### Hasil Evaluasi
 
-Evaluasi dilakukan pada film "Toy Story (1995)":
+Berikut adalah hasil evaluasi menggunakan metrik Precision@K pada film Toy Story (1995).
 
 ```python
 cbf_precision_score("Toy Story (1995)", k=5)
@@ -536,22 +672,37 @@ cbf_precision_score("Toy Story (1995)", k=10)
 # Output: (0.7, 7)
 ```
 
+```python
+precision, count = cbf_precision_score("Toy Story (1995)", k=5)
+print(f"Precision@5 untuk 'Toy Story (1995)': {precision:.2f} ({count} relevan dari 5)")
+# Output: Precision@5 untuk 'Toy Story (1995)': 0.80 (4 relevan dari 5)
+
+precision_10, count_10 = cbf_precision_score("Toy Story (1995)", k=10)
+print(f"Precision@10 untuk 'Toy Story (1995)': {precision_10:.2f} ({count_10} relevan dari 10)")
+# Output: Precision@10 untuk 'Toy Story (1995)': 0.70 (7 relevan dari 10)
+```
+
+Tabel ringkasan evaluasi CBF:
+
 | Metric         | K=5  | K=10 |
 | -------------- | ---- | ---- |
 | Precision@K    | 0.80 | 0.70 |
 | Relevant Items | 4/5  | 7/10 |
 
-#### Analisis CBF
+#### Analisis CBF: Interpretasi Hasil Precision@K
 
 * **Precision@5 = 0.80** menunjukkan bahwa 4 dari 5 film yang direkomendasikan memiliki genre yang sama.
 * **Precision@10 = 0.70** menunjukkan bahwa 7 dari 10 film yang direkomendasikan sesuai genre.
 * Sistem cukup akurat, terutama untuk rekomendasi jumlah kecil.
 
+Hasil ini menunjukkan bahwa sistem Content-Based Filtering mampu memberikan rekomendasi yang relevan berdasarkan genre. Nilai Precision@5 sebesar 0.80 cukup tinggi untuk ukuran sistem berbasis konten sederhana, dan masih memberikan relevansi yang baik pada k=10.
+
+
 ---
 
 ### B. Collaborative Filtering (CF)
 
-Metode CF dievaluasi menggunakan metrik RMSE (Root Mean Squared Error) pada data training dan validasi. RMSE mengukur jarak antara rating aktual dan prediksi model.
+Metode CF dievaluasi menggunakan metrik RMSE (*Root Mean Squared Error*) untuk mengukur selisih antara rating aktual dan prediksi model. RMSE digunakan karena mencerminkan seberapa dekat prediksi model terhadap nilai sebenarnya dalam skenario rekomendasi berbasis rating.
 
 #### Metrik Evaluasi: RMSE
 
@@ -568,26 +719,24 @@ Keterangan:
 
 RMSE sesuai digunakan untuk sistem rekomendasi berbasis prediksi karena memberikan gambaran seberapa dekat prediksi model terhadap rating aktual.
 
-#### Callback EarlyStopping
-
-Model dilengkapi dengan callback **EarlyStopping** untuk menghentikan pelatihan secara otomatis apabila tidak ada perbaikan pada metrik RMSE validasi dalam sejumlah epoch berturut-turut. Ini mencegah overfitting dan menghemat waktu komputasi.
-
-```python
-# Callback EarlyStopping
-earlystop = tf.keras.callbacks.EarlyStopping(
-    monitor='val_root_mean_squared_error',
-    patience=10,
-    restore_best_weights=True
-)
-```
-
 #### Hasil Evaluasi
+
+Evaluasi dilakukan menggunakan data validasi setelah model selesai dilatih, dengan cara seperti di kode berikut
 
 ```python
 final_val_rmse = history_cf.history['val_root_mean_squared_error'][-1]
 final_train_rmse = history_cf.history['root_mean_squared_error'][-1]
 final_val_loss = history_cf.history['val_loss'][-1]
 ```
+Berikut hasil akhirnya:
+
+```python
+final_val_rmse = history_cf.history['val_root_mean_squared_error'][-1] #Output: Validation RMSE akhir: 0.2323
+final_train_rmse = history_cf.history['root_mean_squared_error'][-1] #Output: Training RMSE akhir: 0.1516
+final_val_loss = history_cf.history['val_loss'][-1] #Output: Validation Loss akhir: 0.6438
+```
+
+Tabel Ringkasan Evaluasi Model CF
 
 | Metrik          | Nilai  | Keterangan                 |
 | --------------- | ------ | -------------------------- |
@@ -595,6 +744,8 @@ final_val_loss = history_cf.history['val_loss'][-1]
 | Training RMSE   | 0.1516 | Model terlatih dengan baik |
 | Validation Loss | 0.6438 | Tidak overfitting          |
 | Epoch Berakhir  | 31/100 | EarlyStopping aktif        |
+
+Model berhenti pada epoch ke-31 karena EarlyStopping aktif, menandakan tidak ada peningkatan signifikan pada validasi RMSE. Hal ini menunjukkan bahwa model telah mencapai performa optimal secara efisien.
 
 #### Visualisasi Evaluasi
 * RMSE Plot
@@ -618,7 +769,7 @@ Grafik Loss menunjukkan pola serupa, di mana loss pada data training menurun sta
 
 
 
-#### Analisis CF
+#### Analisis CF: Interpretasi Evaluasi Model CF
 
 * Model berhenti di epoch ke-31 karena **EarlyStopping**.
 * Performa model **baik** dengan RMSE validasi yang rendah dan selisih RMSE training yang masih wajar.
@@ -628,10 +779,11 @@ Grafik Loss menunjukkan pola serupa, di mana loss pada data training menurun sta
 
 ### Perbandingan Performa Model
 
-| Model | Kelebihan                                         | Kekurangan                             | Nilai Evaluasi |
-| ----- | ------------------------------------------------- | -------------------------------------- | -------------- |
-| CBF   | Akurat pada genre yang sama (Precision@5 = 0.80) | Terbatas pada konten, kurang personal  | 8.0 / 10       |
-| CF    | Personalisasi tinggi, RMSE validasi rendah (0.23) | Perlu data historis, rentan cold-start | 8.5 / 10       |
+| Model | Kelebihan                                         | Kekurangan                             | Rekomendasi Penggunaan                          |
+|-------|---------------------------------------------------|----------------------------------------|-------------------------------------------------|
+| CBF   | Akurat pada genre yang sama (Precision@5 = 0.80)  | Terbatas pada konten, kurang personal  | Saat pengguna baru atau data rating masih minim |
+| CF    | Personalisasi tinggi, RMSE validasi rendah (0.23) | Perlu data historis, rentan cold-start | Saat sistem memiliki banyak data pengguna       |
+
 
 CF memiliki keunggulan dari sisi personalisasi dan performa evaluasi kuantitatif. Sementara itu, CBF lebih unggul dalam konteks cold-start dan interpretabilitas berbasis konten.
 
