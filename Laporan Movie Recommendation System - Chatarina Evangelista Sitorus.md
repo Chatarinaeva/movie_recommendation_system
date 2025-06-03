@@ -193,8 +193,12 @@ Dengan memecah genre menjadi baris individual, kita dapat menghitung kemiripan a
 
 **Kode Program:**
 ```python
-tfidf = TfidfVectorizer()
-tfidf_matrix = tfidf.fit_transform(df_movies_cb['genres'])
+# Gunakan hasil explode langsung tanpa groupby
+cbf_features = df_movies_cb.reset_index(drop=True)
+
+# TF-IDF Vectorization
+vectorizer = TfidfVectorizer()
+genre_matrix = vectorizer.fit_transform(cbf_features['genres'])
 ```
 
 **Proses yang dilakukan:**  
@@ -311,12 +315,16 @@ Content-Based Filtering merekomendasikan film berdasarkan kemiripan kontennya, k
 
 #### a. *Cosine Similarity* (Menghitung similarity/kemiripan antar baris)
 
+Cosine similarity digunakan untuk mengukur kemiripan antar film berdasarkan vektor fitur genre yang telah direpresentasikan menggunakan TF-IDF. Semakin tinggi nilai *cosine similarity* antar dua film, semakin mirip isi (genre) dari kedua film tersebut.
+
 ```python
 similarity_matrix = cosine_similarity(genre_matrix)
 similarity_df = pd.DataFrame(similarity_matrix, index=cbf_features['title'], columns=cbf_features['title'])
 ```
 
 #### b. *Recommendation Function* (Fungsi Rekomendasi)
+
+Fungsi `cbf_recommend_movies` digunakan untuk mencari film yang paling mirip dengan film acuan berdasarkan nilai cosine similarity tertinggi. Fungsi ini akan mengembalikan daftar film yang direkomendasikan.
 
 ```python
 def cbf_recommend_movies(title, similarity_data=similarity_df, metadata=cbf_features[['title', 'genres']], k=10):
@@ -395,6 +403,10 @@ cbf_recommend_movies(title_of_movie, k=10)
 | 9    | Hunt for Red October, The (1990)          | Action    |
 | 10   | The Book of Life (2014)                   | Adventure |
 
+Insight Rekomendasi untuk "Toy Story (1995)":
+
+Film Toy Story (1995) memiliki kombinasi genre seperti  `Adventure`, `Animation`, `Children`, `Comedy`, dan `Fantasy`. Sistem berhasil memberikan rekomendasi film yang relevan, seperti *Thief of Bagdad* dan *Eight Below*, yang memiliki genre serupa, khususnya `Adventure` dan `Action`. Hal ini menunjukkan bahwa metode Content-Based Filtering mampu mengenali kemiripan konten antar film dan memberikan saran yang sesuai dengan karakteristik genre film acuan.
+
 #### Visualisasi Output Content-Based Filtering
 Gambar berikut menunjukkan visualisasi hasil rekomendasi menggunakan Content-Based Filtering:
 
@@ -413,6 +425,8 @@ Model menerima input berupa data rating yang telah melalui proses encoding ID pe
 
 
 #### b. Membangun Arsitektur Model: RecommenderNet
+
+Model **RecommenderNet** dibangun dengan pendekatan embedding, di mana setiap pengguna dan film direpresentasikan dalam bentuk vektor laten berdimensi tetap. Vektor-vektor ini kemudian dikalikan (dot product) untuk memprediksi skor ketertarikan pengguna terhadap suatu film. Selain itu, model juga menyertakan bias pengguna dan film untuk meningkatkan akurasi prediksi.
 
 ```python
 class RecommenderNet(tf.keras.Model):
@@ -567,7 +581,7 @@ recommendations = movies_data[movies_data.movieId.isin(top_movie_ids)]
 for row in recommendations.itertuples():
     print(f"{row.title} : {row.genres}")
 ```
-Dalam eksperimen ini, sistem memilih satu pengguna secara acak dari dataset—yaitu **user ID 23**
+Dalam eksperimen ini, sistem memilih satu pengguna secara acak dari dataset—yaitu **user ID 23**.
 
 **Top 5 Film Favorit dari Pengguna (User 23):**
 
