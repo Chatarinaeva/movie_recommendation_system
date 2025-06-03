@@ -309,27 +309,63 @@ Persiapan data yang cermat memainkan peran penting dalam kesuksesan sistem rekom
 
 Content-Based Filtering merekomendasikan film berdasarkan kemiripan kontennya, khususnya dari informasi genre. Setelah fitur genre direpresentasikan dalam bentuk vektor menggunakan TF-IDF pada tahap sebelumnya, perhitungan kemiripan antar film dilakukan menggunakan *cosine similarity*.
 
-#### a. Perhitungan Kemiripan dengan Cosine Similarity
+#### a. *Cosine Similarity* (Menghitung similarity/kemiripan antar baris)
 
 ```python
-cosine_sim = cosine_similarity(tfidf_matrix)
-cosine_sim_df = pd.DataFrame(cosine_sim, index=df_movies_cb['title'], columns=df_movies_cb['title'])
+similarity_matrix = cosine_similarity(genre_matrix)
+similarity_df = pd.DataFrame(similarity_matrix, index=cbf_features['title'], columns=cbf_features['title'])
 ```
 
-#### b. Fungsi Rekomendasi
+#### b. *Recommendation Function* (Fungsi Rekomendasi)
 
 ```python
-def get_cbf_recommendations(title, top_n=10):
-    sim_scores = cosine_sim_df[title].sort_values(ascending=False)
-    top_titles = sim_scores.iloc[1:top_n+1].index
-    return df_movies_cb[df_movies_cb['title'].isin(top_titles)]
+def cbf_recommend_movies(title, similarity_data=similarity_df, metadata=cbf_features[['title', 'genres']], k=10):
+    if title not in similarity_data.columns:
+        return f"Judul '{title}' tidak ditemukan dalam data."
+
+    sim_scores = similarity_data[title]
+
+    # Mencegah error jika bentuknya masih DataFrame
+    if isinstance(sim_scores, pd.DataFrame):
+        sim_scores = sim_scores.iloc[:, 0]
+
+    sim_scores = sim_scores.drop(labels=[title], errors='ignore')
+    sim_scores_sorted = sim_scores.sort_values(ascending=False)
+
+    top_titles = sim_scores_sorted.head(k).index
+
+    return pd.DataFrame(top_titles, columns=['title']) \
+        .merge(metadata, on='title') \
+        .drop_duplicates(subset='title') \
+        .head(k)
+
 ```
 
-#### Hasil Rekomendasi CBF
+#### Hasil Rekomendasi CBF (Top-N Recommendation CBF)
 
-Rekomendasi diberikan untuk pengguna yang menyukai **Toy Story (1995)** berdasarkan kemiripan genre menggunakan **Content-Based Filtering**.
+Pada tahap ini, sistem memberikan rekomendasi film berdasarkan kemiripan genre dengan satu film acuan yang dipilih pengguna. Untuk contoh ini, film yang digunakan sebagai input adalah:
 
-**Top-5 Rekomendasi Teratas:**
+```python
+title_of_movie = "Toy Story (1995)"
+```
+
+Sebelum mencari film yang mirip, kita dapat melihat terlebih dahulu genre apa saja yang dimiliki oleh film tersebut dengan kode berikut:
+
+```python
+cbf_features[cbf_features['title'] == title_of_movie]
+```
+
+Berdasarkan output dari kode di atas, diketahui bahwa Toy Story (1995) termasuk dalam beberapa genre seperti `Adventure`, `Animation`, `Children`, `Comedy`, dan `Fantasy`.
+
+Setelah genre diketahui, sistem akan mencari film lain yang memiliki skor kemiripan tertinggi terhadap film tersebut menggunakan fungsi cbf_recommend_movies(...), yang menghitung cosine similarity antar vektor TF-IDF genre. Berikut adalah kode pemanggilan fungsi rekomendasi untuk mencari Top-N Recommendation.
+
+
+```python
+print(f"Top-5 recommended movies similar to '{title_of_movie}':\n")
+cbf_recommend_movies(title_of_movie, k=5)
+```
+
+**Top-5 recommended movies similar to 'Toy Story (1995)':**
 
 | Rank | Judul Film                               | Genre     |
 |------|-------------------------------------------|-----------|
@@ -339,7 +375,12 @@ Rekomendasi diberikan untuk pengguna yang menyukai **Toy Story (1995)** berdasar
 | 4    | Curious George (2006)                     | Adventure |
 | 5    | Seven Years in Tibet (1997)               | Adventure |
 
-**Top-10 Rekomendasi Teratas:**
+```python
+print(f"Top-10 recommended movies similar to '{title_of_movie}':\n")
+cbf_recommend_movies(title_of_movie, k=10)
+```
+
+**Top-10 recommended movies similar to 'Toy Story (1995)':**
 
 | Rank | Judul Film                               | Genre     |
 |------|-------------------------------------------|-----------|
